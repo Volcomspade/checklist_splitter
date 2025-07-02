@@ -3,9 +3,8 @@ import zipfile
 from PyPDF2 import PdfReader, PdfWriter
 import io
 import re
-from pdf2image import convert_from_bytes
-from PIL import Image
 import unicodedata
+import pandas as pd
 
 st.set_page_config(page_title="Checklist PDF Splitter", layout="wide")
 st.title("\U0001F4C4 Checklist PDF Splitter")
@@ -19,41 +18,27 @@ def clean_filename(name):
     name = name.replace(' ', '_')
     return name[:100]
 
-def extract_checklist_titles(pdf_bytes):
-    images = convert_from_bytes(pdf_bytes, dpi=200, first_page=1)
+def extract_checklist_titles(pages_text):
     titles = []
-    for i, image in enumerate(images):
-        width, height = image.size
-        crop_box = (0, 0, width, height // 4)
-        cropped = image.crop(crop_box)
-        text = pytesseract.image_to_string(cropped)
-        match = re.search(r"^T\d+\.BESS\.\d+:.*", text, re.MULTILINE)
+    for i, text in enumerate(pages_text):
+        match = re.search(r"^Name:\s*(T\d+\.BESS\.\d+:.*?)$", text, re.MULTILINE)
         if match:
-            titles.append((i, match.group().strip()))
+            titles.append((i, match.group(1).strip()))
     return titles
 
 if uploaded_file:
     uploaded_file.seek(0)
-    pdf_bytes = uploaded_file.read()
-    reader = PdfReader(io.BytesIO(pdf_bytes))
-    pages = reader.pages
+    pdf_reader = PdfReader(uploaded_file)
+    pages_text = [page.extract_text() or "" for page in pdf_reader.pages]
 
-    # Convert first few pages to images for checklist detection
-    import pytesseract
-    from pdf2image.exceptions import PDFInfoNotInstalledError
-
-    try:
-        checklist_titles = extract_checklist_titles(pdf_bytes)
-    except PDFInfoNotInstalledError:
-        st.error("Poppler is not installed. Please install it on your host environment.")
-        checklist_titles = []
+    checklist_titles = extract_checklist_titles(pages_text)
 
     if checklist_titles:
         st.success(f"Detected {len(checklist_titles)} checklists.")
 
         # Build start/end indices
         start_indices = [idx for idx, _ in checklist_titles]
-        end_indices = start_indices[1:] + [len(pages)]
+        end_indices = start_indices[1:] + [len(pages_text)]
         checklist_groups = [
             {"title": clean_filename(title), "start": start, "end": end}
             for (start, title), end in zip(checklist_titles, end_indices)
@@ -65,7 +50,7 @@ if uploaded_file:
                 for group in checklist_groups:
                     writer = PdfWriter()
                     for p in range(group["start"], group["end"]):
-                        writer.add_page(pages[p])
+                        writer.add_page(pdf_reader.pages[p])
                     pdf_output = io.BytesIO()
                     writer.write(pdf_output)
                     zipf.writestr(f"{group['title']}.pdf", pdf_output.getvalue())

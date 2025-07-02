@@ -21,7 +21,7 @@ def extract_checklist_titles(pages_text):
     titles = []
     for i, text in enumerate(pages_text):
         if all(field in text for field in ["ID", "Name", "Description", "Company", "Checklist Status"]):
-            match = re.search(r"Name\s*[:\-]?\s*(.*?)\n(?:Description|Author|Created On|Company)", text, re.IGNORECASE | re.DOTALL)
+            match = re.search(r"Name\s*[:\-]?\s*(.*?)\n(?:Description|Author|Created On|Tags|Custom Properties|Company|Priority|Status|Location|Equipment Name|Equipment Barcode)", text, re.IGNORECASE | re.DOTALL)
             if match:
                 raw_title = match.group(1).strip()
                 titles.append((i, raw_title))

@@ -28,6 +28,8 @@ def extract_checklist_titles(pages_text):
             )
             if match:
                 raw_title = match.group(1).strip()
+                # Remove any trailing field labels accidentally included in the name
+                raw_title = re.split(r"\b(ID|Description|Author|Created On|Tags|Custom Properties|Company|Priority|Status|Location|Equipment Name|Equipment Barcode)\b", raw_title)[0].strip()
                 titles.append((i, raw_title))
     return titles
 

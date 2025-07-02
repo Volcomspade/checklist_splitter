@@ -5,8 +5,6 @@ import io
 import re
 import unicodedata
 import pandas as pd
-from pdf2image import convert_from_bytes
-import pytesseract
 
 st.set_page_config(page_title="Checklist PDF Splitter", layout="wide")
 st.title("\U0001F4C4 Checklist PDF Splitter")
@@ -28,30 +26,12 @@ def extract_checklist_titles(pages_text):
             titles.append((i, match.group(1).strip()))
     return titles
 
-def ocr_page(image):
-    return pytesseract.image_to_string(image)
-
 if uploaded_file:
     uploaded_file.seek(0)
     file_bytes = uploaded_file.read()
     pdf_reader = PdfReader(io.BytesIO(file_bytes))
 
-    # OCR fallback using pdf2image and pytesseract
-    try:
-        pdf_images = convert_from_bytes(file_bytes)
-    except Exception as e:
-        st.error("OCR failed to initialize. Ensure the runtime supports pdf2image and poppler.")
-        st.stop()
-
-    pages_text = []
-    for i, page in enumerate(pdf_reader.pages):
-        text = page.extract_text()
-        if not text or text.strip() == "":
-            try:
-                text = ocr_page(pdf_images[i])
-            except Exception as e:
-                text = ""
-        pages_text.append(text or "")
+    pages_text = [page.extract_text() or "" for page in pdf_reader.pages]
 
     checklist_titles = extract_checklist_titles(pages_text)
 

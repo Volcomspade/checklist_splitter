@@ -37,20 +37,6 @@ def extract_checklist_titles(pages_text):
 def remove_overlay_elements(page):
     if "/Annots" in page:
         page["/Annots"] = []
-    if "/Contents" in page:
-        contents = page["/Contents"]
-        if isinstance(contents, list):
-            for c in contents:
-                if hasattr(c, "get_data"):
-                    data = c.get_data()
-                    data = re.sub(b'Report run on .*?Checklist', b'', data)
-                    data = re.sub(b'Page \d+ of \d+', b'', data)
-                    c.set_data(data)
-        elif hasattr(contents, "get_data"):
-            data = contents.get_data()
-            data = re.sub(b'Report run on .*?Checklist', b'', data)
-            data = re.sub(b'Page \d+ of \d+', b'', data)
-            contents.set_data(data)
 
 if uploaded_file:
     uploaded_file.seek(0)

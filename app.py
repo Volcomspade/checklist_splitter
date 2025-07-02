@@ -12,7 +12,6 @@ st.title("\U0001F4C4 Checklist PDF Splitter")
 uploaded_file = st.file_uploader("Upload Checklist Report PDF", type=["pdf"])
 
 def clean_filename(name):
-    name = re.sub(r"^Name:\s*", "", name)
     name = unicodedata.normalize('NFKD', name).encode('ascii', 'ignore').decode()
     name = re.sub(r'[^\w\-\s\.]', '', name)
     name = name.replace(' ', '_')
@@ -21,7 +20,7 @@ def clean_filename(name):
 def extract_checklist_titles(pages_text):
     titles = []
     for i, text in enumerate(pages_text):
-        match = re.search(r"Name:\s*(T\d+\.BESS\.\d+.*?)\s", text, re.IGNORECASE)
+        match = re.search(r"ID:\s*MQ\d+.*?Name:\s*(.*?)\s+Description:", text, re.IGNORECASE | re.DOTALL)
         if match:
             titles.append((i, match.group(1).strip()))
     return titles
@@ -38,7 +37,6 @@ if uploaded_file:
     if checklist_titles:
         st.success(f"Detected {len(checklist_titles)} checklists.")
 
-        # Build start/end indices
         start_indices = [idx for idx, _ in checklist_titles]
         end_indices = start_indices[1:] + [len(pages_text)]
         checklist_groups = [

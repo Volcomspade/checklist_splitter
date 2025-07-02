@@ -28,12 +28,29 @@ def extract_checklist_titles(pages_text):
             )
             if match:
                 raw_title = match.group(1).strip()
-                # Remove field label artifacts in-line or at end
                 raw_title = re.sub(
                     r"\s*(ID|Description|Author|Created On|Tags|Custom Properties|Company|Priority|Status|Location|Equipment Name|Equipment Barcode)\s*:?.*", 
                     "", raw_title, flags=re.IGNORECASE)
                 titles.append((i, raw_title))
     return titles
+
+def remove_overlay_elements(page):
+    if "/Annots" in page:
+        page["/Annots"] = []
+    if "/Contents" in page:
+        contents = page["/Contents"]
+        if isinstance(contents, list):
+            for c in contents:
+                if hasattr(c, "get_data"):
+                    data = c.get_data()
+                    data = re.sub(b'Report run on .*?Checklist', b'', data)
+                    data = re.sub(b'Page \d+ of \d+', b'', data)
+                    c.set_data(data)
+        elif hasattr(contents, "get_data"):
+            data = contents.get_data()
+            data = re.sub(b'Report run on .*?Checklist', b'', data)
+            data = re.sub(b'Page \d+ of \d+', b'', data)
+            contents.set_data(data)
 
 if uploaded_file:
     uploaded_file.seek(0)
@@ -60,7 +77,9 @@ if uploaded_file:
             for group in checklist_groups:
                 writer = PdfWriter()
                 for p in range(group["start"], group["end"]):
-                    writer.add_page(pdf_reader.pages[p])
+                    page = pdf_reader.pages[p]
+                    remove_overlay_elements(page)
+                    writer.add_page(page)
                 pdf_output = io.BytesIO()
                 writer.write(pdf_output)
                 filename = f"{group['title']}.pdf"

@@ -21,7 +21,7 @@ def clean_filename(name):
 def extract_checklist_titles(pages_text):
     titles = []
     for i, text in enumerate(pages_text):
-        match = re.search(r"^Name:\s*(T\d+\.BESS\.\d+:.*?)$", text, re.MULTILINE)
+        match = re.search(r"(T\d+\.BESS\.\d+:.*?)", text)
         if match:
             titles.append((i, match.group(1).strip()))
     return titles

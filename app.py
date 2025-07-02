@@ -21,7 +21,7 @@ def clean_filename(name):
 def extract_checklist_titles(pages_text):
     titles = []
     for i, text in enumerate(pages_text):
-        match = re.search(r"(T\d+\.BESS\.\d+:.*?)", text)
+        match = re.search(r"Name:\s*(T\d+\.BESS\.\d+.*?Checklist)", text, re.IGNORECASE)
         if match:
             titles.append((i, match.group(1).strip()))
     return titles
@@ -44,17 +44,21 @@ if uploaded_file:
             for (start, title), end in zip(checklist_titles, end_indices)
         ]
 
-        if st.button("Download ZIP of Checklists"):
-            zip_buffer = io.BytesIO()
-            with zipfile.ZipFile(zip_buffer, "w") as zipf:
-                for group in checklist_groups:
-                    writer = PdfWriter()
-                    for p in range(group["start"], group["end"]):
-                        writer.add_page(pdf_reader.pages[p])
-                    pdf_output = io.BytesIO()
-                    writer.write(pdf_output)
-                    zipf.writestr(f"{group['title']}.pdf", pdf_output.getvalue())
+        summary_data = []
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w") as zipf:
+            for group in checklist_groups:
+                writer = PdfWriter()
+                for p in range(group["start"], group["end"]):
+                    writer.add_page(pdf_reader.pages[p])
+                pdf_output = io.BytesIO()
+                writer.write(pdf_output)
+                filename = f"{group['title']}.pdf"
+                zipf.writestr(filename, pdf_output.getvalue())
+                summary_data.append({"Checklist Name": group['title'], "Start Page": group['start'] + 1, "End Page": group['end']})
 
-            st.download_button("Download ZIP", data=zip_buffer.getvalue(), file_name="Checklist_Split.zip")
+        summary_df = pd.DataFrame(summary_data)
+        st.dataframe(summary_df)
+        st.download_button("Download ZIP", data=zip_buffer.getvalue(), file_name="Checklist_Split.zip")
     else:
-        st.success("Detected 0 checklists.")
+        st.warning("Detected 0 checklists.")

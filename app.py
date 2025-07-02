@@ -5,6 +5,8 @@ import io
 import re
 import unicodedata
 import pandas as pd
+from pdf2image import convert_from_bytes
+import pytesseract
 
 st.set_page_config(page_title="Checklist PDF Splitter", layout="wide")
 st.title("\U0001F4C4 Checklist PDF Splitter")
@@ -21,15 +23,26 @@ def clean_filename(name):
 def extract_checklist_titles(pages_text):
     titles = []
     for i, text in enumerate(pages_text):
-        match = re.search(r"Name:\s*(T\d+\.BESS\.\d+.*?Checklist)", text, re.IGNORECASE)
+        match = re.search(r"Name:\s*(T\d+\.BESS\.\d+.*?)\s", text, re.IGNORECASE)
         if match:
             titles.append((i, match.group(1).strip()))
     return titles
 
+def ocr_page(image):
+    return pytesseract.image_to_string(image)
+
 if uploaded_file:
     uploaded_file.seek(0)
-    pdf_reader = PdfReader(uploaded_file)
-    pages_text = [page.extract_text() or "" for page in pdf_reader.pages]
+    file_bytes = uploaded_file.read()
+    pdf_reader = PdfReader(io.BytesIO(file_bytes))
+    pdf_images = convert_from_bytes(file_bytes)
+
+    pages_text = []
+    for i, page in enumerate(pdf_reader.pages):
+        text = page.extract_text()
+        if not text or text.strip() == "":
+            text = ocr_page(pdf_images[i])
+        pages_text.append(text or "")
 
     checklist_titles = extract_checklist_titles(pages_text)
 

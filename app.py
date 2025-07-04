@@ -42,15 +42,13 @@ def overlay_white_footer(page):
     height = float(page.mediabox.height)
     can = canvas.Canvas(packet, pagesize=(width, height))
     can.setFillColorRGB(1, 1, 1)
-    can.rect(0, 0, width, 90, fill=True, stroke=False)
+    can.rect(0, 0, width, 90, fill=True, stroke=False)  # Footer
     can.save()
     packet.seek(0)
     overlay_pdf = PdfReader(packet)
     overlay_page = overlay_pdf.pages[0]
-    new_page = PdfWriter()
-    new_page.add_page(page)
-    new_page.pages[0].merge_page(overlay_page)
-    return new_page.pages[0]
+    page.merge_page(overlay_page)
+    return page
 
 def clean_all_pages(pdf_reader):
     cleaned_pages = []

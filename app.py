@@ -40,20 +40,20 @@ def redact_footer_text(page):
     if "/Contents" in page:
         contents = page["/Contents"]
         if hasattr(contents, "get_data"):
-            data = contents.get_data()
-            data = re.sub(b'Report run on .*?\(.*?\)', b'', data)
-            data = re.sub(b'Page \d+ of \d+', b'', data)
             try:
+                data = contents.get_data()
+                data = re.sub(b'Report run on .*?\(.*?\)', b'', data)
+                data = re.sub(b'Page \d+ of \d+', b'', data)
                 contents.set_data(data)
             except Exception:
                 pass
         elif isinstance(contents, list):
             for c in contents:
                 if hasattr(c, "get_data"):
-                    data = c.get_data()
-                    data = re.sub(b'Report run on .*?\(.*?\)', b'', data)
-                    data = re.sub(b'Page \d+ of \d+', b'', data)
                     try:
+                        data = c.get_data()
+                        data = re.sub(b'Report run on .*?\(.*?\)', b'', data)
+                        data = re.sub(b'Page \d+ of \d+', b'', data)
                         c.set_data(data)
                     except Exception:
                         continue
@@ -90,6 +90,7 @@ if uploaded_file:
                 writer = PdfWriter()
                 for p in range(group["start"], group["end"]):
                     page = pdf_reader.pages[p]
+                    redact_footer_text(page)  # Ensure footer is redacted again on split
                     writer.add_page(page)
                 pdf_output = io.BytesIO()
                 writer.write(pdf_output)

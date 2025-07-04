@@ -5,6 +5,8 @@ import io
 import re
 import unicodedata
 import pandas as pd
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter
 
 st.set_page_config(page_title="Checklist PDF Splitter", layout="wide")
 st.title("\U0001F4C4 Checklist PDF Splitter")
@@ -29,40 +31,35 @@ def extract_checklist_titles(pages_text):
             if match:
                 raw_title = match.group(1).strip()
                 raw_title = re.sub(
-                    r"\s*(ID|Description|Author|Created On|Tags|Custom Properties|Company|Priority|Status|Location|Equipment Name|Equipment Barcode)\s*:?.*", 
+                    r"\s*(ID|Description|Author|Created On|Tags|Custom Properties|Company|Priority|Status|Location|Equipment Name|Equipment Barcode)\s*:?.*",
                     "", raw_title, flags=re.IGNORECASE)
                 titles.append((i, raw_title))
     return titles
 
-def redact_footer_text(page):
-    try:
-        content_object = page.get("/Contents")
-        if not content_object:
-            return
+def overlay_white_footer(page):
+    packet = io.BytesIO()
+    width = float(page.mediabox.width)
+    height = float(page.mediabox.height)
+    can = canvas.Canvas(packet, pagesize=(width, height))
+    can.setFillColorRGB(1, 1, 1)
+    can.rect(0, 0, width, 80, fill=True, stroke=False)
+    can.save()
+    packet.seek(0)
+    overlay_pdf = PdfReader(packet)
+    overlay_page = overlay_pdf.pages[0]
+    page.merge_page(overlay_page)
+    return page
 
-        if isinstance(content_object, list):
-            streams = content_object
-        else:
-            streams = [content_object]
-
-        for stream in streams:
-            data = stream.get_data()
-            data = re.sub(b'Report run on .*?\(.*?\)', b'', data)
-            data = re.sub(b'Page \d+ of \d+', b'', data)
-            stream._data = data
-    except Exception:
-        pass
-
-def redact_all_pages(pdf_reader):
-    for page in pdf_reader.pages:
-        redact_footer_text(page)
+def clean_all_pages(pdf_reader):
+    for i in range(len(pdf_reader.pages)):
+        pdf_reader.pages[i] = overlay_white_footer(pdf_reader.pages[i])
 
 if uploaded_file:
     uploaded_file.seek(0)
     file_bytes = uploaded_file.read()
     pdf_reader = PdfReader(io.BytesIO(file_bytes))
 
-    redact_all_pages(pdf_reader)
+    clean_all_pages(pdf_reader)
 
     pages_text = [page.extract_text() or "" for page in pdf_reader.pages]
 
@@ -85,7 +82,6 @@ if uploaded_file:
                 writer = PdfWriter()
                 for p in range(group["start"], group["end"]):
                     page = pdf_reader.pages[p]
-                    redact_footer_text(page)
                     writer.add_page(page)
                 pdf_output = io.BytesIO()
                 writer.write(pdf_output)

@@ -34,9 +34,29 @@ def extract_checklist_titles(pages_text):
                 titles.append((i, raw_title))
     return titles
 
-def remove_overlay_elements(page):
+def redact_footer_text(page):
     if "/Annots" in page:
         page["/Annots"] = []
+    if "/Contents" in page:
+        contents = page["/Contents"]
+        if hasattr(contents, "get_data"):
+            data = contents.get_data()
+            data = re.sub(b'Report run on .*?\(.*?\)', b'', data)
+            data = re.sub(b'Page \d+ of \d+', b'', data)
+            try:
+                contents.set_data(data)
+            except Exception:
+                pass
+        elif isinstance(contents, list):
+            for c in contents:
+                if hasattr(c, "get_data"):
+                    data = c.get_data()
+                    data = re.sub(b'Report run on .*?\(.*?\)', b'', data)
+                    data = re.sub(b'Page \d+ of \d+', b'', data)
+                    try:
+                        c.set_data(data)
+                    except Exception:
+                        continue
 
 if uploaded_file:
     uploaded_file.seek(0)
@@ -64,7 +84,7 @@ if uploaded_file:
                 writer = PdfWriter()
                 for p in range(group["start"], group["end"]):
                     page = pdf_reader.pages[p]
-                    remove_overlay_elements(page)
+                    redact_footer_text(page)
                     writer.add_page(page)
                 pdf_output = io.BytesIO()
                 writer.write(pdf_output)

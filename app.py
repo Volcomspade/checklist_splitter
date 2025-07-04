@@ -42,24 +42,27 @@ def overlay_white_footer(page):
     height = float(page.mediabox.height)
     can = canvas.Canvas(packet, pagesize=(width, height))
     can.setFillColorRGB(1, 1, 1)
-    can.rect(0, 0, width, 90, fill=True, stroke=False)  # Increased height to better cover footer
+    can.rect(0, 0, width, 90, fill=True, stroke=False)
     can.save()
     packet.seek(0)
     overlay_pdf = PdfReader(packet)
     overlay_page = overlay_pdf.pages[0]
-    page.merge_page(overlay_page)
-    return page
+    new_page = PdfWriter()
+    new_page.add_page(page)
+    new_page.pages[0].merge_page(overlay_page)
+    return new_page.pages[0]
 
 def clean_all_pages(pdf_reader):
+    cleaned_pages = []
     for i in range(len(pdf_reader.pages)):
-        pdf_reader.pages[i] = overlay_white_footer(pdf_reader.pages[i])
+        cleaned_page = overlay_white_footer(pdf_reader.pages[i])
+        cleaned_pages.append(cleaned_page)
+    return cleaned_pages
 
 if uploaded_file:
     uploaded_file.seek(0)
     file_bytes = uploaded_file.read()
     pdf_reader = PdfReader(io.BytesIO(file_bytes))
-
-    clean_all_pages(pdf_reader)
 
     pages_text = [page.extract_text() or "" for page in pdf_reader.pages]
 
@@ -81,8 +84,8 @@ if uploaded_file:
             for group in checklist_groups:
                 writer = PdfWriter()
                 for p in range(group["start"], group["end"]):
-                    page = pdf_reader.pages[p]
-                    writer.add_page(page)
+                    cleaned_page = overlay_white_footer(pdf_reader.pages[p])
+                    writer.add_page(cleaned_page)
                 pdf_output = io.BytesIO()
                 writer.write(pdf_output)
                 filename = f"{group['title']}.pdf"

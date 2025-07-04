@@ -42,7 +42,7 @@ def overlay_white_footer(page):
     height = float(page.mediabox.height)
     can = canvas.Canvas(packet, pagesize=(width, height))
     can.setFillColorRGB(1, 1, 1)
-    can.rect(0, 0, width, 80, fill=True, stroke=False)
+    can.rect(0, 0, width, 90, fill=True, stroke=False)  # Increased height to better cover footer
     can.save()
     packet.seek(0)
     overlay_pdf = PdfReader(packet)

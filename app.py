@@ -58,10 +58,16 @@ def redact_footer_text(page):
                     except Exception:
                         continue
 
+def redact_all_pages(pdf_reader):
+    for page in pdf_reader.pages:
+        redact_footer_text(page)
+
 if uploaded_file:
     uploaded_file.seek(0)
     file_bytes = uploaded_file.read()
     pdf_reader = PdfReader(io.BytesIO(file_bytes))
+
+    redact_all_pages(pdf_reader)
 
     pages_text = [page.extract_text() or "" for page in pdf_reader.pages]
 
@@ -84,7 +90,6 @@ if uploaded_file:
                 writer = PdfWriter()
                 for p in range(group["start"], group["end"]):
                     page = pdf_reader.pages[p]
-                    redact_footer_text(page)
                     writer.add_page(page)
                 pdf_output = io.BytesIO()
                 writer.write(pdf_output)

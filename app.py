@@ -7,6 +7,7 @@ import unicodedata
 import pandas as pd
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
+import os
 
 st.set_page_config(page_title="Checklist PDF Splitter", layout="wide")
 st.title("📄 Checklist PDF Splitter")
@@ -38,7 +39,7 @@ def extract_checklist_metadata(pages_text):
                 titles.append({
                     "page": i,
                     "title": clean_filename(raw_title),
-                    "location": clean_filename(location),
+                    "location": location.strip(),  # Don't clean here, will split below
                     "equipment": clean_filename(equipment)
                 })
     return titles
@@ -77,7 +78,10 @@ if uploaded_file:
                     writer.add_page(pdf_reader.pages[p])
                 pdf_output = io.BytesIO()
                 writer.write(pdf_output)
-                folder_path = group["location"] + "/"
+
+                # Build nested folder path from location
+                folder_parts = [clean_filename(part.strip()) for part in group["location"].split('>')]
+                folder_path = "/".join(folder_parts) + "/"
                 filename = f"{group['title']}.pdf"
                 zipf.writestr(folder_path + filename, pdf_output.getvalue())
 

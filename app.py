@@ -5,96 +5,85 @@ import io
 import re
 import unicodedata
 import pandas as pd
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import letter
-import os
 
 st.set_page_config(page_title="Checklist PDF Splitter", layout="wide")
 st.title("📄 Checklist PDF Splitter")
 
 uploaded_file = st.file_uploader("Upload Checklist Report PDF", type=["pdf"])
 
-def clean_filename(name):
+def clean_folder_name(name):
+    # Remove illegal filesystem characters, keep spaces
     name = unicodedata.normalize('NFKD', name).encode('ascii', 'ignore').decode()
-    name = re.sub(r'[<>:"/\\|?*]', '', name)  # Remove illegal characters
+    name = re.sub(r'[<>:"/\\|?*]', '', name)
+    return name.strip()
+
+def clean_filename(name):
+    # Remove illegal chars and replace spaces with underscores for filenames
+    name = unicodedata.normalize('NFKD', name).encode('ascii', 'ignore').decode()
+    name = re.sub(r'[<>:"/\\|?*]', '', name)
+    name = name.replace(' ', '_')
     return name.strip()
 
 def extract_checklist_metadata(pages_text):
-    titles = []
+    metadata = []
     for i, text in enumerate(pages_text):
         if all(field in text for field in ["ID", "Name", "Description", "Company", "Checklist Status"]):
             name_match = re.search(
                 r"Name\s*[:\-]?\s*(.*?)\n(?=(ID|Description|Author|Created On|Tags|Custom Properties|Company|Priority|Status|Location|Equipment Name|Equipment Barcode))",
-                text,
-                re.IGNORECASE | re.DOTALL
+                text, re.IGNORECASE | re.DOTALL
             )
             location_match = re.search(r"Location\s*[:\-]?\s*(.*?)\n", text)
             equipment_match = re.search(r"Equipment Name\s*[:\-]?\s*(.*?)\n", text)
-
             if name_match:
                 raw_title = name_match.group(1).strip()
                 location = location_match.group(1).strip() if location_match else "UNKNOWN LOCATION"
                 equipment = equipment_match.group(1).strip() if equipment_match else "UNKNOWN EQUIPMENT"
-
-                titles.append({
+                metadata.append({
                     "page": i,
-                    "title": clean_filename(raw_title),
-                    "location": location.strip(),  # Don't clean here, will split below
-                    "equipment": clean_filename(equipment)
+                    "title_raw": raw_title,
+                    "location": location,
+                    "equipment": equipment
                 })
-    return titles
+    return metadata
 
 if uploaded_file:
-    uploaded_file.seek(0)
     file_bytes = uploaded_file.read()
     pdf_reader = PdfReader(io.BytesIO(file_bytes))
-
     pages_text = [page.extract_text() or "" for page in pdf_reader.pages]
     checklist_meta = extract_checklist_metadata(pages_text)
 
     if checklist_meta:
         st.success(f"Detected {len(checklist_meta)} checklists.")
-
-        start_indices = [item['page'] for item in checklist_meta]
-        end_indices = start_indices[1:] + [len(pages_text)]
-
-        checklist_groups = [
-            {
-                "title": item['title'],
-                "location": item['location'],
-                "equipment": item['equipment'],
-                "start": start,
-                "end": end
-            }
-            for item, start, end in zip(checklist_meta, start_indices, end_indices)
-        ]
-
-        summary_data = []
+        # Determine page ranges
+        starts = [item['page'] for item in checklist_meta]
+        ends = starts[1:] + [len(pages_text)]
+        summary = []
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, "w") as zipf:
-            for group in checklist_groups:
+            for item, start, end in zip(checklist_meta, starts, ends):
+                # Prepare PDF
                 writer = PdfWriter()
-                for p in range(group["start"], group["end"]):
+                for p in range(start, end):
                     writer.add_page(pdf_reader.pages[p])
-                pdf_output = io.BytesIO()
-                writer.write(pdf_output)
-
-                # Build nested folder path from location
-                folder_parts = [clean_filename(part.strip()) for part in group["location"].split('>')]
-                folder_path = "/".join(folder_parts) + "/"
-                filename = f"{group['title']}.pdf"
-                zipf.writestr(folder_path + filename, pdf_output.getvalue())
-
-                summary_data.append({
-                    "Checklist Name": group['title'],
-                    "Location": group['location'],
-                    "Equipment Name": group['equipment'],
-                    "Start Page": group['start'] + 1,
-                    "End Page": group['end']
+                pdf_bytes = io.BytesIO()
+                writer.write(pdf_bytes)
+                # Build folder path
+                parts = [clean_folder_name(part) for part in item['location'].split('>')]
+                folder_path = "/".join(parts) + "/"
+                # Build filename with underscores
+                filename = clean_filename(item['title_raw']) + ".pdf"
+                zipf.writestr(folder_path + filename, pdf_bytes.getvalue())
+                # Append summary
+                summary.append({
+                    "Checklist Name": item['title_raw'],
+                    "Location": item['location'],
+                    "Equipment Name": item['equipment'],
+                    "Filename": filename,
+                    "Start Page": start + 1,
+                    "End Page": end
                 })
-
-        summary_df = pd.DataFrame(summary_data)
-        st.dataframe(summary_df)
-        st.download_button("Download ZIP", data=zip_buffer.getvalue(), file_name="Checklist_Split_By_Location.zip")
+        df = pd.DataFrame(summary)
+        st.dataframe(df)
+        st.download_button("Download ZIP", data=zip_buffer.getvalue(), file_name="Checklist_By_Location.zip")
     else:
         st.warning("Detected 0 checklists.")

@@ -11,17 +11,20 @@ st.title("📄 Checklist PDF Splitter")
 
 uploaded_file = st.file_uploader("Upload Checklist Report PDF", type=["pdf"])
 
+# Clean filenames: normalize, remove illegal chars, replace spaces with underscores
 def clean_filename(name):
-    # 1) normalize unicode → ascii
     name = unicodedata.normalize('NFKD', name).encode('ascii', 'ignore').decode()
-    # 2) drop illegal filesystem chars
     name = re.sub(r'[<>:"/\\|?*]', '', name)
-    # 3) collapse whitespace to single spaces
     name = re.sub(r'\s+', ' ', name).strip()
-    # 4) spaces → underscores
-    name = name.replace(' ', '_')
-    return name
+    return name.replace(' ', '_')
 
+# Clean folder names: normalize, remove illegal chars, preserve spaces
+def clean_foldername(name):
+    name = unicodedata.normalize('NFKD', name).encode('ascii', 'ignore').decode()
+    name = re.sub(r'[<>:"/\\|?*]', '', name)
+    return re.sub(r'\s+', ' ', name).strip()
+
+# Extract metadata based on header fields
 def extract_checklist_metadata(pages_text):
     meta = []
     for i, text in enumerate(pages_text):
@@ -36,12 +39,11 @@ def extract_checklist_metadata(pages_text):
                 continue
 
             raw_title = m.group(1).strip()
-            # strip trailing “Priority”
             raw_title = re.sub(r'[\s_-]*Priority\s*$', '', raw_title, flags=re.IGNORECASE)
-            title   = clean_filename(raw_title)
+            title = clean_filename(raw_title)
 
             location = loc.group(1).strip() if loc else "UNKNOWN"
-            equipment= eq.group(1).strip() if eq else "UNKNOWN"
+            equipment = eq.group(1).strip() if eq else "UNKNOWN"
 
             meta.append({
                 "page": i,
@@ -52,9 +54,9 @@ def extract_checklist_metadata(pages_text):
     return meta
 
 if uploaded_file:
-    file_bytes  = uploaded_file.read()
-    pdf_reader  = PdfReader(io.BytesIO(file_bytes))
-    pages_text  = [p.extract_text() or "" for p in pdf_reader.pages]
+    file_bytes = uploaded_file.read()
+    pdf_reader = PdfReader(io.BytesIO(file_bytes))
+    pages_text = [p.extract_text() or "" for p in pdf_reader.pages]
     checklist_meta = extract_checklist_metadata(pages_text)
 
     if not checklist_meta:
@@ -63,38 +65,38 @@ if uploaded_file:
         st.success(f"Detected {len(checklist_meta)} checklists.")
 
         starts = [d["page"] for d in checklist_meta]
-        ends   = starts[1:] + [len(pages_text)]
+        ends = starts[1:] + [len(pages_text)]
 
         summary = []
-        zbuf    = io.BytesIO()
-        with zipfile.ZipFile(zbuf, "w") as zf:
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w") as zf:
             for info, s, e in zip(checklist_meta, starts, ends):
                 writer = PdfWriter()
                 for p in range(s, e):
                     writer.add_page(pdf_reader.pages[p])
 
-                out = io.BytesIO()
-                writer.write(out)
+                output_bytes = io.BytesIO()
+                writer.write(output_bytes)
 
-                # nested folders by Location chain
-                parts = [clean_filename(x.strip()) for x in info["location"].split(">")]
+                # Build folder path with spaces preserved
+                parts = [clean_foldername(x.strip()) for x in info["location"].split(">")]
                 folder = "/".join(parts) + "/"
 
-                fname = f"{info['title']}.pdf"
-                zf.writestr(folder + fname, out.getvalue())
+                filename = f"{info['title']}.pdf"
+                zf.writestr(folder + filename, output_bytes.getvalue())
 
                 summary.append({
                     "Checklist Name": info["title"],
-                    "Location":       info["location"],
-                    "Equipment":      info["equipment"],
-                    "Start Page":     s + 1,
-                    "End Page":       e
+                    "Location": info["location"],
+                    "Equipment": info["equipment"],
+                    "Start Page": s + 1,
+                    "End Page": e
                 })
 
         df = pd.DataFrame(summary)
         st.dataframe(df)
         st.download_button(
             "Download ZIP",
-            data=zbuf.getvalue(),
+            data=zip_buffer.getvalue(),
             file_name="Checklists_By_Location.zip"
         )

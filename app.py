@@ -1,4 +1,3 @@
-```python
 import streamlit as st
 import zipfile
 from PyPDF2 import PdfReader, PdfWriter
@@ -83,4 +82,3 @@ if uploaded_file:
         df = pd.DataFrame(rows)
         st.dataframe(df)
         st.download_button("Download ZIP", data=buf.getvalue(), file_name="checklists.zip")
-```

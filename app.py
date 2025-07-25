@@ -26,16 +26,19 @@ def clean_filename(name):
 
 def extract_checklist_metadata(pages_text):
     metadata = []
+    header_labels = ["ID","Description","Author","Created On","Tags","Custom Properties","Company","Priority","Status","Location","Equipment Name","Equipment Barcode"]
+    label_pattern = r"\s+(?:" + "|".join(header_labels) + r")\s*$"
     for i, text in enumerate(pages_text):
         if all(field in text for field in ["ID", "Name", "Description", "Company", "Checklist Status"]):
             name_match = re.search(
-                r"Name\s*[:\-]?\s*(.*?)\n(?=(ID|Description|Author|Created On|Tags|Custom Properties|Company|Priority|Status|Location|Equipment Name|Equipment Barcode))",
-                text, re.IGNORECASE | re.DOTALL
+                r"Name\s*[:\-]?\s*(.*?)\n", text, re.IGNORECASE | re.DOTALL
             )
             location_match = re.search(r"Location\s*[:\-]?\s*(.*?)\n", text)
             equipment_match = re.search(r"Equipment Name\s*[:\-]?\s*(.*?)\n", text)
             if name_match:
                 raw_title = name_match.group(1).strip()
+                # Remove trailing header labels like 'Priority'
+                raw_title = re.sub(label_pattern, "", raw_title, flags=re.IGNORECASE)
                 location = location_match.group(1).strip() if location_match else "UNKNOWN LOCATION"
                 equipment = equipment_match.group(1).strip() if equipment_match else "UNKNOWN EQUIPMENT"
                 metadata.append({
@@ -47,33 +50,29 @@ def extract_checklist_metadata(pages_text):
     return metadata
 
 if uploaded_file:
-    file_bytes = uploaded_file.read()
-    pdf_reader = PdfReader(io.BytesIO(file_bytes))
+    pdf_bytes = uploaded_file.read()
+    pdf_reader = PdfReader(io.BytesIO(pdf_bytes))
     pages_text = [page.extract_text() or "" for page in pdf_reader.pages]
     checklist_meta = extract_checklist_metadata(pages_text)
 
     if checklist_meta:
         st.success(f"Detected {len(checklist_meta)} checklists.")
-        # Determine page ranges
         starts = [item['page'] for item in checklist_meta]
         ends = starts[1:] + [len(pages_text)]
         summary = []
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, "w") as zipf:
             for item, start, end in zip(checklist_meta, starts, ends):
-                # Prepare PDF
                 writer = PdfWriter()
                 for p in range(start, end):
                     writer.add_page(pdf_reader.pages[p])
-                pdf_bytes = io.BytesIO()
-                writer.write(pdf_bytes)
-                # Build folder path
-                parts = [clean_folder_name(part) for part in item['location'].split('>')]
+                pdf_out = io.BytesIO()
+                writer.write(pdf_out)
+                # Build nested folder path from location
+                parts = [clean_folder_name(part.strip()) for part in item['location'].split('>')]
                 folder_path = "/".join(parts) + "/"
-                # Build filename with underscores
                 filename = clean_filename(item['title_raw']) + ".pdf"
-                zipf.writestr(folder_path + filename, pdf_bytes.getvalue())
-                # Append summary
+                zipf.writestr(folder_path + filename, pdf_out.getvalue())
                 summary.append({
                     "Checklist Name": item['title_raw'],
                     "Location": item['location'],

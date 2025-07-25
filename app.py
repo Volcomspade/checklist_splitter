@@ -12,90 +12,88 @@ st.title("📄 Checklist PDF Splitter")
 uploaded_file = st.file_uploader("Upload Checklist Report PDF", type=["pdf"])
 
 def clean_filename(name):
+    # Normalize unicode and strip illegal filename characters
     name = unicodedata.normalize('NFKD', name).encode('ascii', 'ignore').decode()
-    name = re.sub(r'[<>:"/\\|?*]', '', name)  # Remove illegal characters
-    return name.strip()
+    return re.sub(r'[<>:"/\\|?*]', '', name).strip()
+
 
 def extract_checklist_metadata(pages_text):
-    titles = []
-    header_labels = ["ID", "Description", "Author", "Created On", "Tags", "Custom Properties", "Company", "Priority", "Status", "Location", "Equipment Name", "Equipment Barcode"]
-    label_pattern = "|".join(header_labels)
+    metadata = []
     for i, text in enumerate(pages_text):
-        # Look for the Details block containing all required fields
+        # Identify the header section by presence of key fields
         if all(field in text for field in ["ID", "Name", "Description", "Company", "Checklist Status"]):
-            # Capture name spanning multiple lines until the next header label
-            name_regex = re.compile(
-                r"Name\s*[:\-]?\s*([\s\S]*?)(?=\n(?:" + label_pattern + r")\s*[:\-]?)",
+            # Capture the Name field (handles multiline)
+            name_match = re.search(
+                r"Name\s*[:\-]?\s*([\s\S]+?)\n(?:ID|Description|Author|Created On|Tags|Custom Properties|Company)",
+                text,
                 re.IGNORECASE
             )
-            location_regex = re.compile(r"Location\s*[:\-]?\s*(.*?)\s*\n", re.IGNORECASE)
-            equipment_regex = re.compile(r"Equipment Name\s*[:\-]?\s*(.*?)\s*\n", re.IGNORECASE)
-
-            name_match = name_regex.search(text)
-            location_match = location_regex.search(text)
-            equipment_match = equipment_regex.search(text)
+            location_match = re.search(r"Location\s*[:\-]?\s*(.*?)\n", text)
+            equipment_match = re.search(r"Equipment Name\s*[:\-]?\s*(.*?)\n", text)
 
             if name_match:
-                raw_title = name_match.group(1).strip().replace("\n", " ")
-                location = location_match.group(1).strip() if location_match else "UNKNOWN LOCATION"
-                equipment = equipment_match.group(1).strip() if equipment_match else "UNKNOWN EQUIPMENT"
+                raw_title = ' '.join(name_match.group(1).split())
+                location = location_match.group(1).strip() if location_match else "UNKNOWN_LOCATION"
+                equipment = equipment_match.group(1).strip() if equipment_match else "UNKNOWN_EQUIPMENT"
 
-                titles.append({
+                metadata.append({
                     "page": i,
                     "title": clean_filename(raw_title),
                     "location": clean_filename(location),
                     "equipment": clean_filename(equipment)
                 })
-    return titles
+    return metadata
+
 
 if uploaded_file:
-    uploaded_file.seek(0)
     file_bytes = uploaded_file.read()
     pdf_reader = PdfReader(io.BytesIO(file_bytes))
 
-    pages_text = [page.extract_text() or "" for page in pdf_reader.pages]
+    # Extract text from each page
+    pages_text = [p.extract_text() or "" for p in pdf_reader.pages]
     checklist_meta = extract_checklist_metadata(pages_text)
 
     if checklist_meta:
         st.success(f"Detected {len(checklist_meta)} checklists.")
 
-        start_indices = [item['page'] for item in checklist_meta]
-        end_indices = start_indices[1:] + [len(pages_text)]
+        # Determine page ranges for each checklist
+        starts = [item['page'] for item in checklist_meta]
+        ends = starts[1:] + [len(pages_text)]
 
-        checklist_groups = [
-            {
-                "title": item['title'],
-                "location": item['location'],
-                "equipment": item['equipment'],
+        groups = []
+        for meta, start, end in zip(checklist_meta, starts, ends):
+            groups.append({
+                "title": meta['title'],
                 "start": start,
                 "end": end
-            }
-            for item, start, end in zip(checklist_meta, start_indices, end_indices)
-        ]
+            })
 
-        summary_data = []
+        # Build the ZIP
         zip_buffer = io.BytesIO()
+        summary = []
         with zipfile.ZipFile(zip_buffer, "w") as zipf:
-            for group in checklist_groups:
+            for g in groups:
                 writer = PdfWriter()
-                for p in range(group["start"], group["end"]):
-                    writer.add_page(pdf_reader.pages[p])
-                pdf_output = io.BytesIO()
-                writer.write(pdf_output)
-                folder_path = group["location"] + "/"
-                filename = f"{group['title']}.pdf"
-                zipf.writestr(folder_path + filename, pdf_output.getvalue())
+                for pg in range(g['start'], g['end']):
+                    writer.add_page(pdf_reader.pages[pg])
 
-                summary_data.append({
-                    "Checklist Name": group['title'],
-                    "Location": group['location'],
-                    "Equipment Name": group['equipment'],
-                    "Start Page": group['start'] + 1,
-                    "End Page": group['end']
+                pdf_out = io.BytesIO()
+                writer.write(pdf_out)
+                filename = f"{g['title']}.pdf"
+                zipf.writestr(filename, pdf_out.getvalue())
+
+                summary.append({
+                    "Checklist Name": g['title'],
+                    "Start Page": g['start'] + 1,
+                    "End Page": g['end']
                 })
 
-        summary_df = pd.DataFrame(summary_data)
-        st.dataframe(summary_df)
-        st.download_button("Download ZIP", data=zip_buffer.getvalue(), file_name="Checklist_Split_By_Location.zip")
+        df = pd.DataFrame(summary)
+        st.dataframe(df)
+        st.download_button(
+            "Download ZIP of Checklists",
+            data=zip_buffer.getvalue(),
+            file_name="Checklist_Split.zip"
+        )
     else:
         st.warning("Detected 0 checklists.")
